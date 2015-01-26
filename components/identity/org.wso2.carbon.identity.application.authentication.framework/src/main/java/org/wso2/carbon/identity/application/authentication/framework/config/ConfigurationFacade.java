@@ -18,6 +18,7 @@
 
 package org.wso2.carbon.identity.application.authentication.framework.config;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.logging.Log;
@@ -97,7 +98,7 @@ public class ConfigurationFacade {
         return externalIdPConfig;
     }
 
-    public ExternalIdPConfig getIdPConfigByRealm(String realm) {
+    public ExternalIdPConfig getIdPConfigByRealm(String realm, String tenantDomain) {
 
         ExternalIdPConfig externalIdPConfig = null;
         IdentityProvider idpDO = null;
@@ -108,9 +109,8 @@ public class ConfigurationFacade {
 
         try {
             IdentityProviderManager idpManager = IdentityProviderManager.getInstance();
-            // TODO use tenantDomain sent from client
             idpDO = idpManager
-                    .getEnabledIdPByRealmId(realm, MultitenantConstants.SUPER_TENANT_DOMAIN_NAME);
+                    .getEnabledIdPByRealmId(realm, tenantDomain);
 
             if (idpDO != null) {
 
@@ -133,6 +133,22 @@ public class ConfigurationFacade {
 
     public String getAuthenticationEndpointURL() {
         return FileBasedConfigurationBuilder.getInstance().getAuthenticationEndpointURL();
+    }
+
+    /**
+     * Get the tenant list receiving urls
+     * @return Tenant list receiving urls
+     */
+    public List<String> getTenantDataEndpointURLs() {
+        return FileBasedConfigurationBuilder.getInstance().getTenantDataEndpointURLs();
+    }
+
+    /**
+     * Get the value for tenant list dropdown enable or disable
+     * @return Tenant list dropdown enabled or disabled value
+     */
+    public boolean getTenantDropdownEnabled() {
+        return FileBasedConfigurationBuilder.getInstance().isTenantDomainDropdownEnabled();
     }
 
     public boolean isDumbMode() {

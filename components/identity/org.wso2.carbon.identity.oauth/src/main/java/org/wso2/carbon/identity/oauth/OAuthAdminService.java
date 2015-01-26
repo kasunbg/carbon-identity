@@ -19,15 +19,13 @@
 package org.wso2.carbon.identity.oauth;
 
 import java.util.Arrays;
-import org.apache.axis2.context.MessageContext;
-import org.apache.axis2.transport.http.HTTPConstants;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.context.CarbonContext;
 import org.wso2.carbon.context.PrivilegedCarbonContext;
 import org.wso2.carbon.core.AbstractAdmin;
 import org.wso2.carbon.identity.core.model.OAuthAppDO;
-import org.wso2.carbon.identity.oauth.cache.BaseCache;
+import org.wso2.carbon.identity.oauth.cache.AppInfoCache;
 import org.wso2.carbon.identity.oauth.cache.OAuthCache;
 import org.wso2.carbon.identity.oauth.cache.OAuthCacheKey;
 import org.wso2.carbon.identity.oauth.common.OAuth2ErrorCodes;
@@ -40,11 +38,10 @@ import org.wso2.carbon.identity.oauth.dto.OAuthRevocationRequestDTO;
 import org.wso2.carbon.identity.oauth.dto.OAuthRevocationResponseDTO;
 import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
 import org.wso2.carbon.identity.oauth2.dao.TokenMgtDAO;
-import org.wso2.carbon.utils.ServerConstants;
+import org.wso2.carbon.identity.oauth2.model.AccessTokenDO;
+import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 import org.wso2.carbon.utils.multitenancy.MultitenantUtils;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -54,7 +51,7 @@ public class OAuthAdminService extends AbstractAdmin {
 
     private static List<String> allowedGrants = null;
 
-    private BaseCache<String, OAuthAppDO> appInfoCache = new BaseCache<String,OAuthAppDO>("AppInfoCache");
+    private AppInfoCache appInfoCache = AppInfoCache.getInstance();
 
     /**
      * Registers an consumer secret against the logged in user. A given user can only have a single
@@ -66,7 +63,7 @@ public class OAuthAdminService extends AbstractAdmin {
      */
     public String[] registerOAuthConsumer() throws Exception {
 
-        String loggedInUser = getLoggedInUser();
+        String loggedInUser = CarbonContext.getThreadLocalCarbonContext().getUsername();
 
         if (log.isDebugEnabled()) {
             log.debug("Adding a consumer secret for the logged in user " + loggedInUser);
@@ -87,7 +84,7 @@ public class OAuthAdminService extends AbstractAdmin {
      */
     public OAuthConsumerAppDTO[] getAllOAuthApplicationData() throws Exception {
 
-        String userName = getLoggedInUser();
+        String userName = CarbonContext.getThreadLocalCarbonContext().getUsername();
         OAuthConsumerAppDTO[] dtos = new OAuthConsumerAppDTO[0];
 
         if (userName == null) {
@@ -172,7 +169,7 @@ public class OAuthAdminService extends AbstractAdmin {
      * @throws Exception    Error when persisting the application information to the persistence store
      */
     public void registerOAuthApplicationData(OAuthConsumerAppDTO application) throws Exception {
-        String userName = getLoggedInUser();
+        String userName = CarbonContext.getThreadLocalCarbonContext().getUsername();
         if (userName != null) {
             String tenantUser = MultitenantUtils.getTenantAwareUsername(userName);
             int tenantId = CarbonContext.getThreadLocalCarbonContext().getTenantId();
@@ -240,7 +237,7 @@ public class OAuthAdminService extends AbstractAdmin {
      * @throws IdentityOAuthAdminException Error when updating the underlying identity persistence store.
      */
     public void updateConsumerApplication(OAuthConsumerAppDTO consumerAppDTO) throws Exception {
-        String userName = getLoggedInUser();
+        String userName = CarbonContext.getThreadLocalCarbonContext().getUsername();
         String tenantAwareUsername = MultitenantUtils.getTenantAwareUsername(userName);
         int tenantId = CarbonContext.getThreadLocalCarbonContext().getTenantId();
         OAuthAppDAO dao = new OAuthAppDAO();
@@ -287,18 +284,6 @@ public class OAuthAdminService extends AbstractAdmin {
                 log.debug("Client credentials are removed from the cache.");
             }
         }
-    }
-
-    private String getLoggedInUser() {
-        MessageContext msgContext = MessageContext.getCurrentMessageContext();
-        HttpServletRequest request = (HttpServletRequest) msgContext
-                .getProperty(HTTPConstants.MC_HTTP_SERVLETREQUEST);
-        HttpSession httpSession = request.getSession(false);
-
-        if (httpSession != null) {
-            return (String) httpSession.getAttribute(ServerConstants.USER_LOGGED_IN);
-        }
-        return null;
     }
 
     /**
@@ -351,7 +336,37 @@ public class OAuthAdminService extends AbstractAdmin {
                 String tenantAwareUserName = PrivilegedCarbonContext.getThreadLocalCarbonContext().getUsername();
                 String userName = tenantAwareUserName + "@" + tenantDomain;
                 userName = userName.toLowerCase();
+
+                //Retrieving the AccessTokenDO before revoking
+                List<AccessTokenDO> accessTokenDOs = new ArrayList<AccessTokenDO>();
+                OAuthAppDAO appDAO = new OAuthAppDAO();
+                String userStoreDomain = null;
+                if (OAuth2Util.checkAccessTokenPartitioningEnabled() &&
+                        OAuth2Util.checkUserNameAssertionEnabled()) {
+                    userStoreDomain = OAuth2Util.getUserStoreDomainFromUserId(userName);
+                }
+                //Retrieving the OAuthAppDO since revokeRequestDTO doesn't
+                // contain (empty string) ConsumerKey to retrieve the AccessTokenDO
+                OAuthAppDO[] appDOs = tokenMgtDAO.getAppsAuthorizedByUser(userName);
+                for (String appName : revokeRequestDTO.getApps()) {
+                    for (OAuthAppDO appDO : appDOs) {
+                        appDO = appDAO.getAppInformation(appDO.getOauthConsumerKey());
+                        if (appDO.getApplicationName().equals(appName)) {
+                            AccessTokenDO accessTokenDO = tokenMgtDAO.getValidAccessTokenIfExist(appDO.getOauthConsumerKey(),
+                                    userName, userStoreDomain, true);
+                            accessTokenDOs.add(accessTokenDO);
+                        }
+                    }
+                }
+
+                //Revoking the tokens
                 tokenMgtDAO.revokeTokensByResourceOwner(revokeRequestDTO.getApps(), userName);
+
+                //Clear cache with AccessTokenDO
+                for (AccessTokenDO accessTokenDO : accessTokenDOs) {
+                    OAuthUtil.clearOAuthCache(accessTokenDO.getConsumerKey(), accessTokenDO.getAuthzUser(),
+                            OAuth2Util.buildScopeString(accessTokenDO.getScope()));
+                }
             } else {
                 OAuthRevocationResponseDTO revokeRespDTO = new OAuthRevocationResponseDTO();
                 revokeRespDTO.setError(true);
@@ -361,6 +376,9 @@ public class OAuthAdminService extends AbstractAdmin {
             }
             return new OAuthRevocationResponseDTO();
         } catch (IdentityOAuth2Exception e){
+            log.error(e.getMessage(), e);
+            throw new IdentityOAuthAdminException("Error occurred while revoking OAuth2 authorization grant(s)");
+        } catch (InvalidOAuthClientException e) {
             log.error(e.getMessage(), e);
             throw new IdentityOAuthAdminException("Error occurred while revoking OAuth2 authorization grant(s)");
         }

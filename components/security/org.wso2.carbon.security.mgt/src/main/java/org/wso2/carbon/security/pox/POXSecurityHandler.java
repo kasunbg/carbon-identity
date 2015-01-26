@@ -1,5 +1,5 @@
 /*
- * Copyright 2005-2007 WSO2, Inc. (http://wso2.com)
+ * Copyright 2005-2014 WSO2, Inc. (http://wso2.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -154,9 +154,9 @@ public class POXSecurityHandler implements Handler {
 
         String basicAuthHeader = getBasicAuthHeaders(msgCtx);
 
-         //this handler only intercepts
+        //this handler only intercepts
         if (!(msgCtx.isDoingREST() || isSOAPWithoutSecHeader(msgCtx)) ||
-		!msgCtx.getIncomingTransportName().equals("https")) {
+                !msgCtx.getIncomingTransportName().equals("https")) {
             return InvocationResponse.CONTINUE;
         }
 
@@ -199,12 +199,12 @@ public class POXSecurityHandler implements Handler {
             if (username == null || password == null || password.trim().length() == 0
                     || username.trim().length() == 0) {
 
-               setAuthHeaders(msgCtx);
+                setAuthHeaders(msgCtx);
 
                 return InvocationResponse.ABORT;
             }
 
-            
+
             Document doc = Axis2Util.getDocumentFromSOAPEnvelope(msgCtx.getEnvelope(), true);
 
             WSSecHeader secHeader = new WSSecHeader();
@@ -296,7 +296,7 @@ public class POXSecurityHandler implements Handler {
         //see whether security header present: if so return false
         SOAPHeader soapHeader = msgCtx.getEnvelope().getHeader();
         if (soapHeader == null) {
-           return true; // no security header
+            return true; // no security header
         }
         //getting the set of secuirty headers
         ArrayList headerBlocks = soapHeader.getHeaderBlocksWithNSURI(WSConstants.WSSE_NS);
@@ -364,6 +364,6 @@ public class POXSecurityHandler implements Handler {
     private Cache<String, String> getPOXCache() {
         CacheManager manager = Caching.getCacheManagerFactory().getCacheManager(POXSecurityHandler.POX_CACHE_MANAGER);
         Cache<String, String> cache = manager.getCache(POXSecurityHandler.POX_ENABLED);
-    	return cache;
+        return cache;
     }
 }

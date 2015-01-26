@@ -26,11 +26,11 @@ import org.wso2.carbon.identity.entitlement.pip.PIPExtension;
 import org.wso2.carbon.identity.entitlement.pip.PIPResourceFinder;
 import org.wso2.carbon.identity.entitlement.policy.collection.PolicyCollection;
 import org.wso2.carbon.identity.entitlement.policy.finder.PolicyFinderModule;
+import org.wso2.carbon.identity.entitlement.policy.publisher.PolicyPublisherModule;
+import org.wso2.carbon.identity.entitlement.policy.publisher.PostPublisherModule;
+import org.wso2.carbon.identity.entitlement.policy.publisher.PublisherVerificationModule;
 import org.wso2.carbon.identity.entitlement.policy.store.PolicyDataStore;
 import org.wso2.carbon.identity.entitlement.policy.store.PolicyStoreManageModule;
-import org.wso2.carbon.identity.entitlement.policy.publisher.PostPublisherModule;
-import org.wso2.carbon.identity.entitlement.policy.publisher.PolicyPublisherModule;
-import org.wso2.carbon.identity.entitlement.policy.publisher.PublisherVerificationModule;
 import org.wso2.carbon.identity.entitlement.policy.version.PolicyVersionManager;
 
 import javax.xml.validation.Schema;

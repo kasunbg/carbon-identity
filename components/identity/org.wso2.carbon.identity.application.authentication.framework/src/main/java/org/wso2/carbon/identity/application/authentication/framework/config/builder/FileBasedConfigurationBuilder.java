@@ -46,6 +46,7 @@ import org.wso2.carbon.identity.application.authentication.framework.util.Framew
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationManagementUtil;
 import org.wso2.carbon.utils.CarbonUtils;
+import org.apache.commons.lang.StringUtils;
 
 /**
  * Application Authenticators Framework configuration reader.
@@ -57,15 +58,29 @@ public class FileBasedConfigurationBuilder {
 	private static FileBasedConfigurationBuilder instance;
 	
 	private String authenticationEndpointURL;
+
+       /**
+        * List of URLs that receive the tenant list
+        */
+	private List<String> tenantDataEndpointURLs = new ArrayList<String>();
+
+       /**
+        * Tenant list dropdown enabled or disabled value
+        */
+	private boolean isTenantDomainDropdownEnabled;
+    
 	private boolean isDumbMode;
 	private List<ExternalIdPConfig> idpList = new ArrayList<ExternalIdPConfig>();
 	private List<SequenceConfig> sequenceList = new ArrayList<SequenceConfig>();
+    private List<String> authEndpointQueryParams = new ArrayList<String>();
 	private Map<String, AuthenticatorConfig> authenticatorConfigMap = new Hashtable<String, AuthenticatorConfig>();
 	private Map<String, Object> extensions = new Hashtable<String, Object>();
 	private int maxLoginAttemptCount = 5;
 	private Map<String,String> authenticatorNameMappings = new HashMap<String, String>();
 	private Map<String,Integer> cacheTimeouts = new HashMap<String, Integer>();
-	
+    private String authEndpointQueryParamsAction;
+    private boolean authEndpointQueryParamsConfigAvailable;
+
 	public static FileBasedConfigurationBuilder getInstance() {
         if(instance == null){
             instance = new FileBasedConfigurationBuilder();
@@ -94,7 +109,36 @@ public class FileBasedConfigurationBuilder {
             if (authEndpointURLElem != null) {
             	 authenticationEndpointURL = authEndpointURLElem.getText();
             }
-            
+
+            //########### Read tenant data listener URLs ###########
+            OMElement tenantDataURLsElem =
+                    documentElement.getFirstChildWithName(IdentityApplicationManagementUtil.
+                            getQNameWithIdentityApplicationNS(
+                                    FrameworkConstants.Config.QNAME_TENANT_DATA_LISTENER_URLS));
+
+            if (tenantDataURLsElem != null) {
+                for (Iterator tenantDataURLElems = tenantDataURLsElem.getChildrenWithLocalName(
+                        FrameworkConstants.Config.ELEM_TENANT_DATA_LISTENER_URL);
+                                tenantDataURLElems.hasNext(); ) {
+
+                    OMElement tenantDataListenerURLElem = (OMElement) tenantDataURLElems.next();
+                    if (tenantDataListenerURLElem != null &&
+                            StringUtils.isNotEmpty(tenantDataListenerURLElem.getText())) {
+                        tenantDataEndpointURLs.add(tenantDataListenerURLElem.getText());
+                    }
+                }
+            }
+
+            //########### Read tenant domain dropdown enabled value ###########
+            OMElement tenantDomainDropdownElem =
+                    documentElement.getFirstChildWithName(IdentityApplicationManagementUtil.
+                            getQNameWithIdentityApplicationNS(
+                                    FrameworkConstants.Config.QNAME_TENANT_DOMAIN_DROPDOWN_ENABLED));
+
+            if (tenantDomainDropdownElem != null) {
+                isTenantDomainDropdownEnabled = Boolean.parseBoolean(tenantDomainDropdownElem.getText());
+            }
+
             //########### Read Proxy Mode ###########
             //TODO:get proxy modes from an enum?
             OMElement proxyModeElem = documentElement.getFirstChildWithName(IdentityApplicationManagementUtil.
@@ -122,7 +166,40 @@ public class FileBasedConfigurationBuilder {
                 	}
             	}
             }
-            
+
+            // ########### Read Authentication Endpoint Query Params ###########
+            OMElement authEndpointQueryParamsElem = documentElement
+                    .getFirstChildWithName(IdentityApplicationManagementUtil
+                            .getQNameWithIdentityApplicationNS(FrameworkConstants.Config.QNAME_AUTH_ENDPOINT_QUERY_PARAMS));
+
+            if (authEndpointQueryParamsElem != null) {
+
+                authEndpointQueryParamsConfigAvailable = true;
+                OMAttribute actionAttr = authEndpointQueryParamsElem.getAttribute(new QName(
+                        FrameworkConstants.Config.ATTR_AUTH_ENDPOINT_QUERY_PARAM_ACTION));
+                authEndpointQueryParamsAction = FrameworkConstants.AUTH_ENDPOINT_QUERY_PARAMS_ACTION_EXCLUDE;
+
+                if (actionAttr != null) {
+                    String actionValue = actionAttr.getAttributeValue();
+
+                    if (actionValue != null && !actionValue.isEmpty()) {
+                        authEndpointQueryParamsAction = actionValue;
+                    }
+                }
+
+
+                for (Iterator authEndpointQueryParamElems = authEndpointQueryParamsElem
+                        .getChildrenWithLocalName(FrameworkConstants.Config.ELEM_AUTH_ENDPOINT_QUERY_PARAM); authEndpointQueryParamElems
+                             .hasNext(); ) {
+                    String queryParamName = processAuthEndpointQueryParamElem((OMElement) authEndpointQueryParamElems
+                            .next());
+
+                    if (queryParamName != null) {
+                        this.authEndpointQueryParams.add(queryParamName);
+                    }
+                }
+            }
+
             //########### Read Extension Points ###########
             OMElement extensionsElem = documentElement.getFirstChildWithName(IdentityApplicationManagementUtil.
                                         getQNameWithIdentityApplicationNS(FrameworkConstants.Config.QNAME_EXTENSIONS));
@@ -245,6 +322,19 @@ public class FileBasedConfigurationBuilder {
                 log.warn("Unable to close the file input stream created for " + FrameworkConstants.Config.AUTHENTICATORS_FILE_NAME);
             }	
         }
+    }
+
+    private String processAuthEndpointQueryParamElem(OMElement authEndpointQueryParamElem) {
+
+        OMAttribute nameAttr = authEndpointQueryParamElem.getAttribute(new QName(
+                FrameworkConstants.Config.ATTR_AUTH_ENDPOINT_QUERY_PARAM_NAME));
+
+        if (nameAttr == null) {
+            log.warn("Each Authentication Endpoint Query Param should have a unique name attribute. This Query Param will skipped.");
+            return null;
+        }
+
+        return nameAttr.getAttributeValue();
     }
     
     private void processAuthenticatorNameMappingElement(OMElement authenticatorNameMappingElem) {
@@ -505,12 +595,40 @@ public class FileBasedConfigurationBuilder {
 		return null;
 	}
 
+    public List<String> getAuthEndpointQueryParams() {
+        return authEndpointQueryParams;
+    }
+
+    public String getAuthEndpointQueryParamsAction() {
+        return authEndpointQueryParamsAction;
+    }
+
+    public boolean isAuthEndpointQueryParamsConfigAvailable() {
+        return authEndpointQueryParamsConfigAvailable;
+    }
+
 	public String getAuthenticationEndpointURL() {
 		return authenticationEndpointURL;
 	}
 
 	public void setAuthenticationEndpointURL(String authenticationEndpointURL) {
 		this.authenticationEndpointURL = authenticationEndpointURL;
+	}
+
+       /**
+        * Get the tenant list receiving urls
+        * @return Tenant list receiving urls
+        */
+	public List<String> getTenantDataEndpointURLs() {
+            return tenantDataEndpointURLs;
+    	}
+
+       /**
+        * Get the value of tenant list dropdown enabled or disabled
+        * @return Tenant list dropdown enabled or disabled
+        */
+	public boolean isTenantDomainDropdownEnabled() {
+            return isTenantDomainDropdownEnabled;
 	}
 
 	public boolean isDumbMode() {

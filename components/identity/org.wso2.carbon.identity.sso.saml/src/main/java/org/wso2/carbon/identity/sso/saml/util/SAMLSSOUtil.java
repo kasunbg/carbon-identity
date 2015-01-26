@@ -156,17 +156,19 @@ public class SAMLSSOUtil {
             // this is the default behavior.
             return true;
         }
-        
-        if (isSaaSApplication.get() != null) {
-            return isSaaSApplication.get().booleanValue();
-        } else {
-            return false;
+
+        Boolean value = isSaaSApplication.get();
+
+        if (value != null) {
+            return value;
         }
-    }
+
+        return false;
+        }
 
     public static void setIsSaaSApplication(boolean isSaaSApp) {
         isSaaSApplication = new ThreadLocal<Boolean>();
-        isSaaSApplication.set(Boolean.valueOf(isSaaSApp));
+        isSaaSApplication.set(isSaaSApp);
     }
     
     public static void removeSaaSApplicationThreaLocal() {
@@ -230,8 +232,10 @@ public class SAMLSSOUtil {
         try {
             doBootstrap();
             DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+            documentBuilderFactory.setExpandEntityReferences(false);
             documentBuilderFactory.setNamespaceAware(true);
             DocumentBuilder docBuilder = documentBuilderFactory.newDocumentBuilder();
+            docBuilder.setEntityResolver(new CarbonEntityResolver());
             inputStream = new ByteArrayInputStream(authReqStr.trim().getBytes());
             Document document = docBuilder.parse(inputStream);
             Element element = document.getDocumentElement();
@@ -396,8 +400,8 @@ public class SAMLSSOUtil {
         IdentityProvider identityProvider = null;
         String tenantDomain = null;
         try {
-            tenantDomain = SAMLSSOUtil.getTenantDomainFromThreadLocal();
-            if(tenantDomain == null){
+            tenantDomain = getTenantDomainFromThreadLocal();
+            if (tenantDomain == null || tenantDomain.equals("null")) {
                 tenantDomain = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
             }
             identityProvider = IdentityProviderManager.getInstance().getResidentIdP(tenantDomain);
@@ -766,24 +770,22 @@ public class SAMLSSOUtil {
      */
     public static boolean validateLogoutRequestSignature(LogoutRequest logoutRequest, String alias,
                                                          String subject, String queryString) {
-        String domainName = MultitenantUtils.getTenantDomain(subject);
-		/*
-		 * if (isStratosDeployment) {
-		 * domainName = MultitenantConstants.SUPER_TENANT_DOMAIN_NAME;
-		 * }
-		 */
-        try{
-        if (queryString != null) {
-            return validateDeflateSignature(queryString, logoutRequest.getIssuer().getValue(), alias,
-                    domainName);
-        } else {
-            return validateXMLSignature(logoutRequest, alias, domainName);
-        }
-    } catch (IdentityException e) {
-        log.warn("Failed to validate login request signature ");
-        log.debug(e);
+        String domainName = getTenantDomainFromThreadLocal();
+        try {
+            if (queryString != null) {
+                return validateDeflateSignature(queryString, logoutRequest.getIssuer().getValue(),
+                                                alias,
+                                                domainName);
+            } else {
+                return validateXMLSignature(logoutRequest, alias, domainName);
+            }
+        } catch (IdentityException e) {
+            log.warn("Failed to validate login request signature ");
+            if (log.isDebugEnabled()) {
+                log.debug(e);
+            }
             return false;
-    }
+        }
     }
 
     /**

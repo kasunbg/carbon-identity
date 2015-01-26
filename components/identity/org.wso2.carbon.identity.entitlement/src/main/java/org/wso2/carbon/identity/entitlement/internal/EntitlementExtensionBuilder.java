@@ -18,28 +18,28 @@
 
 package org.wso2.carbon.identity.entitlement.internal;
 
-import java.io.*;
-import java.net.URL;
-import java.util.Properties;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.osgi.framework.BundleContext;
-import org.wso2.carbon.identity.entitlement.PDPConstants;
 import org.wso2.carbon.identity.entitlement.PAPStatusDataHandler;
+import org.wso2.carbon.identity.entitlement.PDPConstants;
 import org.wso2.carbon.identity.entitlement.pap.EntitlementDataFinderModule;
 import org.wso2.carbon.identity.entitlement.pip.PIPAttributeFinder;
 import org.wso2.carbon.identity.entitlement.pip.PIPExtension;
 import org.wso2.carbon.identity.entitlement.pip.PIPResourceFinder;
 import org.wso2.carbon.identity.entitlement.policy.collection.PolicyCollection;
 import org.wso2.carbon.identity.entitlement.policy.finder.PolicyFinderModule;
+import org.wso2.carbon.identity.entitlement.policy.publisher.PolicyPublisherModule;
 import org.wso2.carbon.identity.entitlement.policy.publisher.PostPublisherModule;
 import org.wso2.carbon.identity.entitlement.policy.publisher.PublisherVerificationModule;
 import org.wso2.carbon.identity.entitlement.policy.store.PolicyDataStore;
 import org.wso2.carbon.identity.entitlement.policy.store.PolicyStoreManageModule;
-import org.wso2.carbon.identity.entitlement.policy.publisher.PolicyPublisherModule;
 import org.wso2.carbon.identity.entitlement.policy.version.PolicyVersionManager;
 import org.wso2.carbon.utils.CarbonUtils;
+
+import java.io.*;
+import java.net.URL;
+import java.util.Properties;
 
 /**
  * Build Entitlement configuration from entitlement.properties. First this will try to find the
@@ -81,7 +81,7 @@ public class EntitlementExtensionBuilder {
 
     private static final String ENTITLEMENT_CONFIG = "entitlement.properties";
 
-    private static Log log = LogFactory.getLog(EntitlementExtensionBuilder.class);
+    private static final Log log = LogFactory.getLog(EntitlementExtensionBuilder.class);
 
     private BundleContext bundleContext;
 
@@ -113,7 +113,7 @@ public class EntitlementExtensionBuilder {
 
     /**
      * 
-     * @return
+     * @return properties
      * @throws IOException
      */
     private Properties loadProperties() throws IOException {
@@ -182,8 +182,8 @@ public class EntitlementExtensionBuilder {
 
     /**
      * 
-     * @param properties
-     * @param holder
+     * @param properties which are used to populate pdp properties
+     * @param holder holder of properties
      */
     private void populateEntitlementAttributes(Properties properties, EntitlementConfigHolder holder) {
 
@@ -211,6 +211,7 @@ public class EntitlementExtensionBuilder {
 
         holder.setEngineProperties(pdpProperties);
     }
+
     
     private void setProperty(Properties inProp, Properties outProp, String name) {
         String value;
@@ -228,7 +229,7 @@ public class EntitlementExtensionBuilder {
     private void populateAttributeFinders(Properties properties, EntitlementConfigHolder holder)
             throws Exception {
         int i = 1;
-        PIPAttributeFinder designator = null;
+        PIPAttributeFinder designator;
 
         while (properties.getProperty("PIP.AttributeDesignators.Designator." + i) != null) {
             String className = properties.getProperty("PIP.AttributeDesignators.Designator." + i++);
@@ -450,6 +451,7 @@ public class EntitlementExtensionBuilder {
             holder.addPolicyEntitlementDataFinder(metadata, metadataProps);
         }
     }
+
 
     /**
      * 

@@ -322,7 +322,7 @@ public class DefaultStepBasedSequenceHandler implements StepBasedSequenceHandler
                     List<String> locallyMappedUserRoles = getLocallyMappedUserRoles(sequenceConfig,
                             externalIdPConfig, extAttibutesValueMap, idpRoleClaimUri);
 
-                    if (idpRoleClaimUri != null) {
+                    if (idpRoleClaimUri != null && locallyMappedUserRoles != null && locallyMappedUserRoles.size() > 0) {
                         extAttibutesValueMap.put(
                                 idpRoleClaimUri,
                                 getServiceProviderMappedUserRoles(sequenceConfig,
@@ -587,17 +587,16 @@ public class DefaultStepBasedSequenceHandler implements StepBasedSequenceHandler
             AuthenticationContext context, Map<String, String> extAttrs, boolean isFederatedClaims)
             throws FrameworkException {
 
-        Map<String, String> mappedAttrs = null;
+        Map<String, String> mappedAttrs = new HashMap<String, String>();
 
         try {
             mappedAttrs = FrameworkUtils.getClaimHandler().handleClaimMappings(stepConfig, context,
                     extAttrs, isFederatedClaims);
-            return mappedAttrs;
         } catch (FrameworkException e) {
             log.error("Claim handling failed!", e);
         }
 
-        return null;
+        return mappedAttrs;
     }
 
     /**

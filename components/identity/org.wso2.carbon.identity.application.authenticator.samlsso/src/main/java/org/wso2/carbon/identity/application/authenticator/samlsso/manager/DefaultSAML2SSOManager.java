@@ -1,12 +1,12 @@
 /*
- *  Copyright (c) WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
+ * Copyright (c) 2015 WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
  *
- *  WSO2 Inc. licenses this file to you under the Apache License,
- *  Version 2.0 (the "License"); you may not use this file except
- *  in compliance with the License.
- *  You may obtain a copy of the License at
+ * WSO2 Inc. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
@@ -20,6 +20,7 @@ package org.wso2.carbon.identity.application.authenticator.samlsso.manager;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.xml.security.signature.XMLSignature;
 import org.joda.time.DateTime;
 import org.opensaml.Configuration;
 import org.opensaml.DefaultBootstrap;
@@ -27,13 +28,42 @@ import org.opensaml.common.SAMLVersion;
 import org.opensaml.common.xml.SAMLConstants;
 import org.opensaml.saml2.common.Extensions;
 import org.opensaml.saml2.common.impl.ExtensionsBuilder;
-import org.opensaml.saml2.core.*;
-import org.opensaml.saml2.core.impl.*;
+import org.opensaml.saml2.core.Assertion;
+import org.opensaml.saml2.core.Attribute;
+import org.opensaml.saml2.core.AttributeStatement;
+import org.opensaml.saml2.core.Audience;
+import org.opensaml.saml2.core.AudienceRestriction;
+import org.opensaml.saml2.core.AuthnContextClassRef;
+import org.opensaml.saml2.core.AuthnContextComparisonTypeEnumeration;
+import org.opensaml.saml2.core.AuthnRequest;
+import org.opensaml.saml2.core.Conditions;
+import org.opensaml.saml2.core.EncryptedAssertion;
+import org.opensaml.saml2.core.Issuer;
+import org.opensaml.saml2.core.LogoutRequest;
+import org.opensaml.saml2.core.LogoutResponse;
+import org.opensaml.saml2.core.NameID;
+import org.opensaml.saml2.core.NameIDPolicy;
+import org.opensaml.saml2.core.RequestAbstractType;
+import org.opensaml.saml2.core.RequestedAuthnContext;
+import org.opensaml.saml2.core.Response;
+import org.opensaml.saml2.core.SessionIndex;
+import org.opensaml.saml2.core.impl.AuthnContextClassRefBuilder;
+import org.opensaml.saml2.core.impl.AuthnRequestBuilder;
+import org.opensaml.saml2.core.impl.IssuerBuilder;
+import org.opensaml.saml2.core.impl.LogoutRequestBuilder;
+import org.opensaml.saml2.core.impl.NameIDBuilder;
+import org.opensaml.saml2.core.impl.NameIDPolicyBuilder;
+import org.opensaml.saml2.core.impl.RequestedAuthnContextBuilder;
+import org.opensaml.saml2.core.impl.SessionIndexBuilder;
 import org.opensaml.saml2.encryption.Decrypter;
 import org.opensaml.xml.ConfigurationException;
 import org.opensaml.xml.XMLObject;
 import org.opensaml.xml.encryption.EncryptedKey;
-import org.opensaml.xml.io.*;
+import org.opensaml.xml.io.Marshaller;
+import org.opensaml.xml.io.MarshallingException;
+import org.opensaml.xml.io.Unmarshaller;
+import org.opensaml.xml.io.UnmarshallerFactory;
+import org.opensaml.xml.io.UnmarshallingException;
 import org.opensaml.xml.security.SecurityHelper;
 import org.opensaml.xml.security.credential.Credential;
 import org.opensaml.xml.security.keyinfo.KeyInfoCredentialResolver;
@@ -47,12 +77,12 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.wso2.carbon.identity.application.authentication.framework.context.AuthenticationContext;
 import org.wso2.carbon.identity.application.authenticator.samlsso.exception.SAMLSSOException;
+import org.wso2.carbon.identity.application.authenticator.samlsso.util.CarbonEntityResolver;
 import org.wso2.carbon.identity.application.authenticator.samlsso.util.SSOConstants;
 import org.wso2.carbon.identity.application.authenticator.samlsso.util.SSOUtils;
 import org.wso2.carbon.identity.application.common.model.ClaimMapping;
 import org.wso2.carbon.identity.application.common.model.IdentityProvider;
 import org.wso2.carbon.identity.application.common.util.IdentityApplicationConstants;
-import org.wso2.carbon.registry.core.utils.UUIDGenerator;
 import org.wso2.carbon.ui.CarbonUIUtil;
 import org.xml.sax.SAXException;
 
@@ -61,7 +91,11 @@ import javax.servlet.http.HttpServletRequest;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.StringWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.HashMap;
 import java.util.List;
@@ -76,20 +110,12 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
 
     private static boolean bootStrapped = false;
 
-    private X509Credential credential = null;
     private IdentityProvider identityProvider = null;
     private Map<String,String> properties;
-
-    public void init(String tenantDomain, Map<String, String> properties, IdentityProvider idp)
-            throws SAMLSSOException {
-
-        this.identityProvider = idp;
-        this.credential = new X509CredentialImpl(tenantDomain, identityProvider.getCertificate());
-        this.properties = properties;
-    }
+    private String tenantDomain;
 
     public static void doBootstrap() {
-		/* Initializing the OpenSAML library */
+        /* Initializing the OpenSAML library */
         if (!bootStrapped) {
             try {
                 DefaultBootstrap.bootstrap();
@@ -98,6 +124,14 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
                 log.error("Error in bootstrapping the OpenSAML2 library", e);
             }
         }
+    }
+
+    public void init(String tenantDomain, Map<String, String> properties, IdentityProvider idp)
+            throws SAMLSSOException {
+
+        this.tenantDomain = tenantDomain;
+        this.identityProvider = idp;
+        this.properties = properties;
     }
 
     /**
@@ -151,7 +185,7 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
         }
 
         if(SSOUtils.isAuthnRequestSigned(properties)){
-            SSOUtils.addDeflateSignatureToHTTPQueryString(httpQueryString);
+            SSOUtils.addSignatureToHTTPQueryString(context.getTenantDomain(), httpQueryString);
         }
 
         if(loginPage.indexOf("?") > -1){
@@ -161,6 +195,43 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
         }
         return idpUrl;
     }
+
+
+    /**
+     * @param request
+     * @param isLogout
+     * @param isPassive
+     * @param loginPage
+     * @return return encoded SAML Auth request
+     * @throws SAMLSSOException
+     */
+    public String buildPostRequest(HttpServletRequest request, boolean isLogout,
+                                   boolean isPassive, String loginPage) throws SAMLSSOException {
+        doBootstrap();
+        RequestAbstractType requestMessage;
+
+        if (!isLogout) {
+            requestMessage = buildAuthnRequest(request, isPassive, loginPage);
+            if (SSOUtils.isAuthnRequestSigned(properties)) {
+                requestMessage = SSOUtils.setSignature((AuthnRequest) requestMessage,
+                                                       XMLSignature.ALGO_ID_SIGNATURE_RSA,
+                                                       new X509CredentialImpl(tenantDomain, null));
+            }
+        } else {
+            String username = (String) request.getSession().getAttribute("logoutUsername");
+            String sessionIndex = (String) request.getSession().getAttribute("logoutSessionIndex");
+
+            requestMessage = buildLogoutRequest(username, sessionIndex, loginPage);
+            if (SSOUtils.isLogoutRequestSigned(properties)) {
+                requestMessage = SSOUtils.setSignature((LogoutRequest) requestMessage,
+                                                       XMLSignature.ALGO_ID_SIGNATURE_RSA,
+                                                       new X509CredentialImpl(tenantDomain, null));
+            }
+        }
+
+        return SSOUtils.encode(SSOUtils.marshall(requestMessage));
+    }
+
 
     public void processResponse(HttpServletRequest request) throws SAMLSSOException {
         doBootstrap();
@@ -183,7 +254,12 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
             }
 
             if(samlRequest != null){
-                XMLObject xmlObject = unmarshall(SSOUtils.decode(samlRequest));
+                XMLObject xmlObject;
+                if (SSOConstants.HTTP_POST.equals(request.getMethod())) {
+                    xmlObject = unmarshall(SSOUtils.decodeForPost(samlRequest));
+                } else {
+                    xmlObject = unmarshall(SSOUtils.decode(samlRequest));
+                }
                 if (xmlObject instanceof AuthnRequest) {
                     AuthnRequest authnRequest = (AuthnRequest) xmlObject;
                     Extensions  oldExtensions = authnRequest.getExtensions();
@@ -198,7 +274,7 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
             }
         } catch (Exception e) { // TODO IDENTITY-2421
             //ignore
-            log.error(e);
+            log.debug("Error while loading SAML Extensions", e);
         }
 
         return null;
@@ -238,7 +314,7 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
 
         if (SSOUtils.isAssertionEncryptionEnabled(properties)) {
             List<EncryptedAssertion> encryptedAssertions = samlResponse.getEncryptedAssertions();
-            EncryptedAssertion encryptedAssertion = null;
+            EncryptedAssertion encryptedAssertion;
             if (encryptedAssertions != null && encryptedAssertions.size() > 0) {
                 encryptedAssertion = encryptedAssertions.get(0);
                 try {
@@ -281,7 +357,7 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
         validateAudienceRestriction(assertion);
 
         // validate signature this SP only looking for assertion signature
-        validateSignature(samlResponse,assertion);
+        validateSignature(samlResponse, assertion);
 
         request.getSession(false).setAttribute("samlssoAttributes", getAssertionStatements(assertion));
 
@@ -391,7 +467,7 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
         authRequest.setIssuer(issuer);
         authRequest.setNameIDPolicy(nameIdPolicy);
         authRequest.setRequestedAuthnContext(requestedAuthnContext);
-        authRequest.setID(UUIDGenerator.generateUUID());
+        authRequest.setID(SSOUtils.createID());
         authRequest.setVersion(SAMLVersion.VERSION_20);
         authRequest.setDestination(idpUrl);
         Extensions extensions = getSAMLExtensions(request);
@@ -443,12 +519,14 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
 
     private XMLObject unmarshall(String samlString) throws SAMLSSOException {
 
-        String decodedString = decodeHTMLCharacters(samlString);
+        //String decodedString = decodeHTMLCharacters(samlString);
         DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
         documentBuilderFactory.setNamespaceAware(true);
+        documentBuilderFactory.setExpandEntityReferences(false);
         try {
             DocumentBuilder docBuilder = documentBuilderFactory.newDocumentBuilder();
-            ByteArrayInputStream is = new ByteArrayInputStream(decodedString.getBytes());
+            docBuilder.setEntityResolver(new CarbonEntityResolver());
+            ByteArrayInputStream is = new ByteArrayInputStream(samlString.getBytes());
             Document document = docBuilder.parse(is);
             Element element = document.getDocumentElement();
             UnmarshallerFactory unmarshallerFactory = Configuration.getUnmarshallerFactory();
@@ -545,7 +623,8 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
      * @param response   SAML2 Response
      * @return true, if signature is valid.
      */
-    private void validateSignature(Response response, Assertion assertion) throws SAMLSSOException{
+    private void validateSignature(Response response, Assertion assertion) throws
+                                                                           SAMLSSOException {
         if(SSOUtils.isAuthnResponseSigned(properties)){
             
             if (identityProvider.getCertificate() == null
@@ -558,6 +637,8 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
                 throw new SAMLSSOException("SAMLResponse signing is enabled, but signature element not found in SAML Response element.");
             } else {
                 try {
+                    X509Credential credential =
+                            new X509CredentialImpl(tenantDomain, identityProvider.getCertificate());
                     SignatureValidator validator = new SignatureValidator(credential);
                     validator.validate(response.getSignature());
                 }  catch (ValidationException e) {
@@ -577,6 +658,8 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
                 throw new SAMLSSOException("SAMLAssertion signing is enabled, but signature element not found in SAML Assertion element.");
             } else {
                 try {
+                    X509Credential credential =
+                            new X509CredentialImpl(tenantDomain, identityProvider.getCertificate());
                     SignatureValidator validator = new SignatureValidator(credential);
                     validator.validate(assertion.getSignature());
                 }  catch (ValidationException e) {
@@ -594,6 +677,7 @@ public class DefaultSAML2SSOManager implements SAML2SSOManager {
      * @throws Exception
      */
     private Assertion getDecryptedAssertion(EncryptedAssertion encryptedAssertion) throws Exception {
+        X509Credential credential = new X509CredentialImpl(tenantDomain, null);
         KeyInfoCredentialResolver keyResolver = new StaticKeyInfoCredentialResolver(credential);
         EncryptedKey key = encryptedAssertion.getEncryptedData().getKeyInfo().getEncryptedKeys().get(0);
         Decrypter decrypter = new Decrypter(null, keyResolver, null);

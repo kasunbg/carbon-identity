@@ -1,19 +1,29 @@
+/*
+*  Copyright (c) 2005-2014, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
+*
+*  WSO2 Inc. licenses this file to you under the Apache License,
+*  Version 2.0 (the "License"); you may not use this file except
+*  in compliance with the License.
+*  You may obtain a copy of the License at
+*
+*    http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing,
+* software distributed under the License is distributed on an
+* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+* KIND, either express or implied.  See the License for the
+* specific language governing permissions and limitations
+* under the License.
+*/
 package org.wso2.carbon.identity.mgt.services;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.CarbonConstants;
 import org.wso2.carbon.context.CarbonContext;
-import org.wso2.carbon.identity.base.IdentityConstants;
 import org.wso2.carbon.identity.base.IdentityException;
 import org.wso2.carbon.identity.mgt.ChallengeQuestionProcessor;
 import org.wso2.carbon.identity.mgt.IdentityMgtServiceException;
-import org.wso2.carbon.identity.mgt.beans.VerificationBean;
 import org.wso2.carbon.identity.mgt.constants.IdentityMgtConstants;
 import org.wso2.carbon.identity.mgt.dto.*;
 import org.wso2.carbon.identity.mgt.internal.IdentityMgtServiceComponent;
@@ -21,11 +31,16 @@ import org.wso2.carbon.identity.mgt.util.UserIdentityManagementUtil;
 import org.wso2.carbon.identity.mgt.util.Utils;
 import org.wso2.carbon.user.api.UserStoreException;
 import org.wso2.carbon.user.api.UserStoreManager;
-import org.wso2.carbon.user.core.Permission;
 import org.wso2.carbon.user.core.UserCoreConstants;
+import org.wso2.carbon.user.core.common.AbstractUserStoreManager;
 import org.wso2.carbon.user.core.service.RealmService;
-import org.wso2.carbon.user.mgt.UserMgtConstants;
+import org.wso2.carbon.user.core.util.UserCoreUtil;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * This is the admin service for the identity management. Some of these
@@ -141,8 +156,8 @@ public class UserIdentityManagementAdminService {
 	public void lockUserAccount(String userName) throws IdentityMgtServiceException {
 
 		try {
-            UserStoreManager userStoreManager = IdentityMgtServiceComponent.getRealmService().
-                    getTenantUserRealm(CarbonContext.getThreadLocalCarbonContext().getTenantId()).getUserStoreManager();
+            UserStoreManager userStoreManager =  getUserStore(userName);
+            userName = UserCoreUtil.removeDomainFromName(userName);
 			UserIdentityManagementUtil.lockUserAccount(userName, userStoreManager);
 			log.info("User account " + userName + " locked");
 		} catch (UserStoreException e) {
@@ -162,8 +177,8 @@ public class UserIdentityManagementAdminService {
 	 */
 	public void unlockUserAccount(String userName, String notificationType) throws IdentityMgtServiceException {
 		try {
-            UserStoreManager userStoreManager = IdentityMgtServiceComponent.getRealmService().
-                    getTenantUserRealm(CarbonContext.getThreadLocalCarbonContext().getTenantId()).getUserStoreManager();
+            UserStoreManager userStoreManager =  getUserStore(userName);
+            userName = UserCoreUtil.removeDomainFromName(userName);
 			UserIdentityManagementUtil.unlockUserAccount(userName, userStoreManager);
             if(notificationType != null){
                 UserRecoveryDTO dto = new UserRecoveryDTO(userName);
@@ -194,8 +209,8 @@ public class UserIdentityManagementAdminService {
 	public void resetUserPassword(String userName, String newPassword)
 	                                                                  throws IdentityMgtServiceException {
 		try {
-            UserStoreManager userStoreManager = IdentityMgtServiceComponent.getRealmService().
-                    getTenantUserRealm(CarbonContext.getThreadLocalCarbonContext().getTenantId()).getUserStoreManager();
+            UserStoreManager userStoreManager =  getUserStore(userName);
+            userName = UserCoreUtil.removeDomainFromName(userName);
 			userStoreManager.updateCredentialByAdmin(userName, newPassword);
 		} catch (UserStoreException e) {
 			log.error("Error while resetting the password", e);
@@ -395,9 +410,8 @@ public class UserIdentityManagementAdminService {
         String userName = CarbonContext.getThreadLocalCarbonContext().getUsername();
 
 		try {
-			UserStoreManager userStoreManager = IdentityMgtServiceComponent.getRealmService()
-                               .getTenantUserRealm(CarbonContext.getThreadLocalCarbonContext().getTenantId())
-                               .getUserStoreManager();
+            UserStoreManager userStoreManager =  getUserStore(userName);
+            userName = UserCoreUtil.removeDomainFromName(userName);
 			userStoreManager.updateCredential(userName, newPassword, oldPassword);
 		} catch (UserStoreException e) {
 			log.error("Error while resetting the password", e);
@@ -431,8 +445,7 @@ public class UserIdentityManagementAdminService {
 			tenantId = Utils.getTenantId(tenantDomain);
 			
 			if (realmService.getTenantUserRealm(tenantId) != null) {
-				userStoreManager = (org.wso2.carbon.user.core.UserStoreManager) realmService
-						.getTenantUserRealm(tenantId).getUserStoreManager();
+				userStoreManager = (org.wso2.carbon.user.core.UserStoreManager) getUserStore(userName);
 			}
 
 		} catch (Exception e) {
@@ -453,4 +466,24 @@ public class UserIdentityManagementAdminService {
 		return isReadOnly;
 	}
 
+    private UserStoreManager getUserStore(String userName) throws UserStoreException {
+        UserStoreManager userStoreManager = IdentityMgtServiceComponent.getRealmService().
+                getTenantUserRealm(CarbonContext.getThreadLocalCarbonContext().getTenantId()).getUserStoreManager();
+        if (userName != null && userName.contains(UserCoreConstants.DOMAIN_SEPARATOR)) {
+            String userStoreDomain = getUserStoreDomainName(userName);
+            return ((AbstractUserStoreManager) userStoreManager)
+                    .getSecondaryUserStoreManager(userStoreDomain);
+        } else {
+            return userStoreManager;
+        }
+    }
+
+    private String getUserStoreDomainName(String userName){
+        int index;
+        if ((index = userName.indexOf(CarbonConstants.DOMAIN_SEPARATOR)) >= 0) {
+            // remove domain name if exist
+            userName = userName.substring(0, index);
+        }
+        return userName;
+    }
 }

@@ -1,22 +1,24 @@
 /*
-*  Copyright (c) 2005-2010, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
-*
-*  WSO2 Inc. licenses this file to you under the Apache License,
-*  Version 2.0 (the "License"); you may not use this file except
-*  in compliance with the License.
-*  You may obtain a copy of the License at
-*
-*    http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing,
-* software distributed under the License is distributed on an
-* "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-* KIND, either express or implied.  See the License for the
-* specific language governing permissions and limitations
-* under the License.
-*/
+ * Copyright (c) 2015 WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
+ *
+ * WSO2 Inc. licenses this file to you under the Apache License,
+ * Version 2.0 (the "License"); you may not use this file except
+ * in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 package org.wso2.carbon.identity.scim.common.group;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.wso2.carbon.identity.base.IdentityException;
@@ -32,14 +34,51 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * JDBC based Data Access layer for managing SCIM specific attributes that are not stored in
  * user store.
  */
 public class GroupDAO {
+
     private static Log log = LogFactory.getLog(GroupDAO.class);
+
+    /**
+     * Lists the groups that are created from SCIM
+     *
+     * @return The set of groups that were created from SCIM
+     * @throws IdentitySCIMException
+     */
+    public Set<String> listSCIMGroups() throws IdentitySCIMException {
+        Connection connection = null;
+        PreparedStatement prepStmt = null;
+        ResultSet resultSet = null;
+        Set<String> groups = new HashSet<String>();
+
+        try {
+            //retrieve groups from the DB
+            connection = IdentityDatabaseUtil.getDBConnection();
+            prepStmt = connection.prepareStatement(SQLQueries.LIST_SCIM_GROUPS_SQL);
+            prepStmt.setString(1, SCIMConstants.ID_URI);
+            resultSet = prepStmt.executeQuery();
+            while (resultSet.next()) {
+                String group = resultSet.getString(1);
+                if (StringUtils.isNotEmpty(group)) {
+                    groups.add(group);
+                }
+            }
+        } catch (IdentityException e) {
+            throw new IdentitySCIMException("Error when getting an Identity Persistence Store instance.", e);
+        } catch (SQLException e) {
+            throw new IdentitySCIMException("Error when reading the SCIM Group information from persistence store.", e);
+        } finally {
+            IdentityDatabaseUtil.closeAllConnections(connection, resultSet, prepStmt);
+        }
+        return groups;
+    }
 
     public boolean isExistingGroup(String groupName, int tenantId) throws IdentitySCIMException {
 

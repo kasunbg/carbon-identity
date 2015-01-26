@@ -28,6 +28,7 @@ public class IdentityApplicationConstants {
     public static final String DEFAULT_IDP_CONFIG = "default";
 
     public static final String WSO2CARBON_CLAIM_DIALECT = "http://wso2.org/claims";
+    public static final String SF_OAUTH2_TOKEN_ENDPOINT = "https://login.salesforce.com/services/oauth2/token";
 
 
     public static class ConfigElements {
@@ -52,6 +53,7 @@ public class IdentityApplicationConstants {
         public static class SAML2SSO {
 
             public static final String NAME = "samlsso";
+            public static final String FED_AUTH_NAME = "SAMLSSOAuthenticator";
             public static final String IDP_ENTITY_ID = "IdPEntityId";
             public static final String SP_ENTITY_ID = "SPEntityId";
             public static final String SSO_URL = "SSOUrl";
@@ -87,6 +89,10 @@ public class IdentityApplicationConstants {
             public static final String CLIENT_SECRET = "ClientSecret";
         }
 
+        public static class WSTrust {
+            public static final String NAME = "wstrust";
+        }
+
     }
 
     public static class OAuth10A {
@@ -100,6 +106,7 @@ public class IdentityApplicationConstants {
 
     public static class OAuth2 {
 
+        public static final String NAME = "oauth2";
         public static final String CLIENT_ID = "ClientId";
         public static final String CLIENT_SECRET = "ClientSecret";
         public static final String OAUTH2_AUTHZ_URL = "OAuth2AuthzUrl";
